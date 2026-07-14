@@ -1,25 +1,24 @@
 import os
+import sys
 import random
 import datetime
+import csv
 
 # Define output directory
 LOG_DIR = os.path.dirname(os.path.abspath(__file__))
 AUTH_LOG_PATH = os.path.join(LOG_DIR, "auth.log")
 NGINX_LOG_PATH = os.path.join(LOG_DIR, "nginx_access.log")
+WHITELIST_PATH = os.path.join(LOG_DIR, "employee_directory.csv")
 
 # Configuration
 TOTAL_NORMAL_EVENTS = 1000
 START_TIME = datetime.datetime.now() - datetime.timedelta(days=1)
 
-# List of normal IP addresses, system users, and web paths
-NORMAL_IPS = [
-    "192.168.1.15", "192.168.1.22", "192.168.1.105", 
-    "10.0.0.12", "10.0.0.45", "172.16.0.5"
-]
-EXTERNAL_IPS = [
-    "198.51.100.4", "203.0.113.88", "192.0.2.14"
-]
-SYSTEM_USERS = ["john", "alice", "bob", "devops_guy"]
+# Default Fallbacks if whitelist is empty or missing
+DEFAULT_NORMAL_IPS = ["192.168.1.15", "192.168.1.22", "10.0.0.12", "172.16.0.5"]
+DEFAULT_SYSTEM_USERS = ["john", "alice", "bob", "devops_guy"]
+
+EXTERNAL_IPS = ["198.51.100.4", "203.0.113.88", "192.0.2.14"]
 COMMON_HTTP_PATHS = [
     "/", "/index.html", "/about", "/contact", "/portfolio",
     "/static/css/main.css", "/static/js/bundle.js", "/api/v1/status",
@@ -31,93 +30,117 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/121.0"
 ]
 
-def generate_auth_log():
+def load_employee_directory():
+    """Loads whitelisted usernames and IPs to use for normal log generation."""
+    users = []
+    ips = []
+    
+    if os.path.exists(WHITELIST_PATH):
+        try:
+            with open(WHITELIST_PATH, mode='r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    u = row['username'].strip()
+                    ip = row['approved_ip'].strip()
+                    if u: users.append(u)
+                    if ip: ips.append(ip)
+            if users and ips:
+                print(f"[+] Loaded whitelist directory: {len(users)} users and {len(ips)} IPs will be used for normal log generation.")
+                return users, ips
+        except Exception as e:
+            print(f"[-] Warning: Failed to read employee whitelist: {e}")
+            
+    print("[*] Whitelist directory missing or empty. Using default test users/IPs.")
+    return DEFAULT_SYSTEM_USERS, DEFAULT_NORMAL_IPS
+
+def append_to_whitelist(username, ip, name, dept):
+    """Appends a new user to the employee whitelist CSV."""
+    file_exists = os.path.exists(WHITELIST_PATH)
+    
+    try:
+        with open(WHITELIST_PATH, mode='a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(["username", "approved_ip", "employee_name", "department"])
+            writer.writerow([username, ip, name, dept])
+        print(f"[+] Successfully added {name} ({username} - {ip}) to employee_directory.csv")
+    except Exception as e:
+        print(f"[-] Error writing to whitelist: {e}")
+
+def generate_auth_log(system_users, normal_ips, ssh_attacker_ip):
     """Generates a synthetic auth.log with normal logins and a brute-force SSH attack."""
     events = []
     current_time = START_TIME
     
-    # 1. Generate Normal SSH traffic
+    # 1. Generate Normal SSH traffic using the user-defined Whitelist
     for i in range(TOTAL_NORMAL_EVENTS // 2):
         current_time += datetime.timedelta(seconds=random.randint(10, 300))
-        ip = random.choice(NORMAL_IPS)
-        user = random.choice(SYSTEM_USERS)
+        ip = random.choice(normal_ips)
+        user = random.choice(system_users)
         port = random.randint(49152, 65535)
         
         # Mix of successful logins and occasional normal fat-finger failures
         if random.random() > 0.95:
-            # Fat-finger failure
             events.append((current_time, f"sshd[{random.randint(1000, 30000)}]: Failed password for {user} from {ip} port {port} ssh2"))
         else:
-            # Successful login
             events.append((current_time, f"sshd[{random.randint(1000, 30000)}]: Accepted password for {user} from {ip} port {port} ssh2"))
             events.append((current_time + datetime.timedelta(seconds=1), f"sshd[{random.randint(1000, 30000)}]: pam_unix(sshd:session): session opened for user {user} by (uid=0)"))
-            # Session closed after some time
             close_time = current_time + datetime.timedelta(minutes=random.randint(5, 60))
             events.append((close_time, f"sshd[{random.randint(1000, 30000)}]: pam_unix(sshd:session): session closed for user {user}"))
 
-    # 2. Inject Brute-Force SSH Attack
-    # Attack details: 203.0.113.200 attempts to brute force SSH with invalid users in rapid succession
-    attacker_ip = "203.0.113.200"
+    # 2. Inject Brute-Force SSH Attack using custom Attacker IP
     attack_start_time = START_TIME + datetime.timedelta(hours=6)
     attack_time = attack_start_time
-    
     invalid_usernames = ["root", "admin", "ubnt", "support", "test", "ftpuser", "oracle", "postgres"]
     
-    for _ in range(80):  # 80 rapid failed attempts
+    for _ in range(80):
         attack_time += datetime.timedelta(seconds=random.uniform(0.5, 2.5))
         target_user = random.choice(invalid_usernames)
         port = random.randint(49152, 65535)
-        
-        events.append((attack_time, f"sshd[{random.randint(1000, 30000)}]: Failed password for invalid user {target_user} from {attacker_ip} port {port} ssh2"))
+        events.append((attack_time, f"sshd[{random.randint(1000, 30000)}]: Failed password for invalid user {target_user} from {ssh_attacker_ip} port {port} ssh2"))
     
-    # Finally, successful login after brute-force (realistic scenario of compromised account)
-    compromised_user = "devops_guy"
+    # Successful login after brute-force (simulating compromise of a whitelisted user)
+    compromised_user = random.choice(system_users)
     attack_time += datetime.timedelta(seconds=5)
     port = random.randint(49152, 65535)
-    events.append((attack_time, f"sshd[{random.randint(1000, 30000)}]: Accepted password for {compromised_user} from {attacker_ip} port {port} ssh2"))
+    events.append((attack_time, f"sshd[{random.randint(1000, 30000)}]: Accepted password for {compromised_user} from {ssh_attacker_ip} port {port} ssh2"))
     events.append((attack_time + datetime.timedelta(seconds=1), f"sshd[{random.randint(1000, 30000)}]: pam_unix(sshd:session): session opened for user {compromised_user} by (uid=0)"))
     
-    # Sort events by timestamp
     events.sort(key=lambda x: x[0])
     
-    # Write to file
     with open(AUTH_LOG_PATH, "w") as f:
         for timestamp, msg in events:
-            # Format time like: Jul 14 12:34:56
             time_str = timestamp.strftime("%b %d %H:%M:%S")
             f.write(f"{time_str} ubuntu-server {msg}\n")
             
-    print(f"[+] Successfully generated synthetic SSH log: {AUTH_LOG_PATH}")
+    print(f"[+] Generated SSH log: {AUTH_LOG_PATH}")
 
-def generate_nginx_log():
+def generate_nginx_log(normal_ips, web_attacker_ip):
     """Generates a synthetic Nginx access log with normal requests and a directory traversal attack."""
     events = []
     current_time = START_TIME
     
-    # 1. Generate Normal HTTP traffic
+    # 1. Generate Normal HTTP traffic using whitelist IPs
     for i in range(TOTAL_NORMAL_EVENTS):
         current_time += datetime.timedelta(seconds=random.randint(5, 120))
-        ip = random.choice(NORMAL_IPS + EXTERNAL_IPS)
+        ip = random.choice(normal_ips + EXTERNAL_IPS)
         path = random.choice(COMMON_HTTP_PATHS)
         method = "POST" if path == "/login" else "GET"
         status = 200
         
         if path == "/login":
-            status = random.choice([200, 302, 401]) # Success, Redirect, or Failed Login
+            status = random.choice([200, 302, 401])
         elif random.random() > 0.98:
-            status = 404 # Occasional page not found
+            status = 404
             path = "/not-exist"
             
         bytes_sent = random.randint(150, 4500)
         ua = random.choice(USER_AGENTS)
         events.append((current_time, ip, method, path, status, bytes_sent, ua))
         
-    # 2. Inject Directory Traversal Attack
-    # Attack details: Attacker IP 198.51.100.250 tries directory traversal payloads
-    attacker_ip = "198.51.100.250"
+    # 2. Inject Directory Traversal Attack using custom Attacker IP
     attack_start_time = START_TIME + datetime.timedelta(hours=14)
     attack_time = attack_start_time
-    
     traversal_payloads = [
         "/../../../../etc/passwd",
         "/../../../../etc/shadow",
@@ -129,28 +152,59 @@ def generate_nginx_log():
         "/var/log/auth.log",
         "/../../../var/log/nginx/access.log"
     ]
-    
     ua_attacker = "Mozilla/5.0 (compatible; Nmap Scripting Engine; https://nmap.org/book/nse.html)"
     
     for payload in traversal_payloads:
         attack_time += datetime.timedelta(seconds=random.randint(1, 10))
-        # Nginx usually rejects invalid traversal requests with 400 Bad Request or 404 Not Found depending on server config
         status = random.choice([400, 404, 403])
         bytes_sent = random.randint(100, 300)
-        events.append((attack_time, attacker_ip, "GET", payload, status, bytes_sent, ua_attacker))
+        events.append((attack_time, web_attacker_ip, "GET", payload, status, bytes_sent, ua_attacker))
         
-    # Sort events by timestamp
     events.sort(key=lambda x: x[0])
     
-    # Write to file in Combined Log Format
     with open(NGINX_LOG_PATH, "w") as f:
         for t, ip, method, path, status, bytes_sent, ua in events:
-            # Format: 192.168.1.15 - - [14/Jul/2026:12:34:56 +0000] "GET /index.html HTTP/1.1" 200 1043 "-" "Mozilla/5.0 ..."
             time_str = t.strftime("%d/%b/%Y:%H:%M:%S +0000")
             f.write(f'{ip} - - [{time_str}] "{method} {path} HTTP/1.1" {status} {bytes_sent} "-" "{ua}"\n')
             
-    print(f"[+] Successfully generated synthetic Nginx log: {NGINX_LOG_PATH}")
+    print(f"[+] Generated Nginx log: {NGINX_LOG_PATH}")
 
 if __name__ == "__main__":
-    generate_auth_log()
-    generate_nginx_log()
+    # Check if we are running in non-interactive/silent mode (e.g. from run.py)
+    silent_mode = "--silent" in sys.argv or "-s" in sys.argv
+    
+    ssh_attacker = "203.0.113.200"
+    web_attacker = "198.51.100.250"
+    
+    if not silent_mode:
+        print("==================================================")
+        print("⚙️ Interactive Log Generation Configuration")
+        print("==================================================")
+        
+        # 1. Ask if the user wants to add their own details to the whitelist CSV
+        add_user = input("Would you like to add your own user and IP to the employee directory first? (y/N): ").strip().lower()
+        if add_user == 'y':
+            my_user = input("Enter username: ").strip()
+            my_ip = input("Enter approved IP: ").strip()
+            my_name = input("Enter your full name: ").strip()
+            my_dept = input("Enter department name: ").strip()
+            if my_user and my_ip and my_name and my_dept:
+                append_to_whitelist(my_user, my_ip, my_name, my_dept)
+            else:
+                print("[-] Error: Missing fields. Skipped adding to whitelist.")
+                
+        # 2. Ask for Attacker IP (to simulate custom source IP in logs)
+        custom_attacker = input("Enter an IP address to act as the ATTACKER in generated logs\n(or press Enter to use default test IPs 203.0.113.200 / 198.51.100.250): ").strip()
+        if custom_attacker:
+            ssh_attacker = custom_attacker
+            web_attacker = custom_attacker
+            print(f"[+] Generator will write attacks originating from: {custom_attacker}")
+            
+    # Load Whitelist users and IPs to generate normal events
+    system_users, normal_ips = load_employee_directory()
+    
+    # Generate logs
+    generate_auth_log(system_users, normal_ips, ssh_attacker)
+    generate_nginx_log(normal_ips, web_attacker)
+    
+    print("[*] Log generation complete.")

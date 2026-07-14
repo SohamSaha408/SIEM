@@ -17,15 +17,19 @@ def clear_screen():
     """Clears the terminal screen for a clean menu experience."""
     os.system("cls" if os.name == "nt" else "clear")
 
-def run_step(script_name, description):
+def run_step(script_name, description, extra_args=None):
     """Helper function to run a python script and output its status."""
     print(f"\n==================================================")
     print(f"[*] Starting: {description} ({script_name})")
     print(f"==================================================")
     
+    cmd = [sys.executable, script_name]
+    if extra_args:
+        cmd.extend(extra_args)
+        
     try:
         # Run script using current Python interpreter
-        subprocess.run([sys.executable, script_name], check=True)
+        subprocess.run(cmd, check=True)
         print(f"[+] Finished: {description} successfully.")
         input("\n[Press Enter to continue...]")
         return True
@@ -93,7 +97,7 @@ def interactive_menu():
         elif choice == "8":
             clear_screen()
             print("[*] Running complete pipeline end-to-end...")
-            if (run_step("generate_logs.py", "Generating synthetic logs") and
+            if (run_step("generate_logs.py", "Generating synthetic logs", ["--silent"]) and
                 run_step("test_parser.py", "Running parser unit tests") and
                 run_step("parse_logs.py", "Parsing raw log files") and
                 run_step("store_logs.py", "Ingesting data into SQLite database") and
@@ -144,21 +148,21 @@ Examples:
             
         steps = []
         if args.all or args.generate:
-            steps.append(("generate_logs.py", "Generating synthetic raw logs"))
+            steps.append((["generate_logs.py", "--silent"], "Generating synthetic raw logs"))
         if args.all or args.test:
-            steps.append(("test_parser.py", "Running log parsing unit tests"))
+            steps.append((["test_parser.py"], "Running log parsing unit tests"))
         if args.all or args.parse:
-            steps.append(("parse_logs.py", "Parsing and cleaning logs using Pandas"))
+            steps.append((["parse_logs.py"], "Parsing and cleaning logs using Pandas"))
         if args.all or args.store:
-            steps.append(("store_logs.py", "Ingesting cleaned logs into SQLite DB"))
+            steps.append((["store_logs.py"], "Ingesting cleaned logs into SQLite DB"))
         if args.all or args.hunt:
-            steps.append(("hunt_threats.py", "Executing SQL threat hunting queries"))
+            steps.append((["hunt_threats.py"], "Executing SQL threat hunting queries"))
         if args.all or args.export:
-            steps.append(("export_for_tableau.py", "Exporting CSV datasets for Tableau"))
+            steps.append((["export_for_tableau.py"], "Exporting CSV datasets for Tableau"))
             
-        for script, desc in steps:
+        for cmd_list, desc in steps:
             try:
-                subprocess.run([sys.executable, script], check=True)
+                subprocess.run([sys.executable] + cmd_list, check=True)
             except subprocess.CalledProcessError:
                 print(f"[-] Error: {desc} failed. Aborting pipeline.")
                 sys.exit(1)
