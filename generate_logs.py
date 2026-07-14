@@ -45,27 +45,11 @@ def load_employee_directory():
                     if u: users.append(u)
                     if ip: ips.append(ip)
             if users and ips:
-                print(f"[+] Loaded whitelist directory: {len(users)} users and {len(ips)} IPs will be used for normal log generation.")
                 return users, ips
         except Exception as e:
-            print(f"[-] Warning: Failed to read employee whitelist: {e}")
+            pass
             
-    print("[*] Whitelist directory missing or empty. Using default test users/IPs.")
     return DEFAULT_SYSTEM_USERS, DEFAULT_NORMAL_IPS
-
-def append_to_whitelist(username, ip, name, dept):
-    """Appends a new user to the employee whitelist CSV."""
-    file_exists = os.path.exists(WHITELIST_PATH)
-    
-    try:
-        with open(WHITELIST_PATH, mode='a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            if not file_exists:
-                writer.writerow(["username", "approved_ip", "employee_name", "department"])
-            writer.writerow([username, ip, name, dept])
-        print(f"[+] Successfully added {name} ({username} - {ip}) to employee_directory.csv")
-    except Exception as e:
-        print(f"[-] Error writing to whitelist: {e}")
 
 def generate_auth_log(system_users, normal_ips, ssh_attacker_ip):
     """Generates a synthetic auth.log with normal logins and a brute-force SSH attack."""
@@ -79,7 +63,6 @@ def generate_auth_log(system_users, normal_ips, ssh_attacker_ip):
         user = random.choice(system_users)
         port = random.randint(49152, 65535)
         
-        # Mix of successful logins and occasional normal fat-finger failures
         if random.random() > 0.95:
             events.append((current_time, f"sshd[{random.randint(1000, 30000)}]: Failed password for {user} from {ip} port {port} ssh2"))
         else:
@@ -112,8 +95,6 @@ def generate_auth_log(system_users, normal_ips, ssh_attacker_ip):
         for timestamp, msg in events:
             time_str = timestamp.strftime("%b %d %H:%M:%S")
             f.write(f"{time_str} ubuntu-server {msg}\n")
-            
-    print(f"[+] Generated SSH log: {AUTH_LOG_PATH}")
 
 def generate_nginx_log(normal_ips, web_attacker_ip):
     """Generates a synthetic Nginx access log with normal requests and a directory traversal attack."""
@@ -166,45 +147,16 @@ def generate_nginx_log(normal_ips, web_attacker_ip):
         for t, ip, method, path, status, bytes_sent, ua in events:
             time_str = t.strftime("%d/%b/%Y:%H:%M:%S +0000")
             f.write(f'{ip} - - [{time_str}] "{method} {path} HTTP/1.1" {status} {bytes_sent} "-" "{ua}"\n')
-            
-    print(f"[+] Generated Nginx log: {NGINX_LOG_PATH}")
 
 if __name__ == "__main__":
-    # Check if we are running in non-interactive/silent mode (e.g. from run.py)
-    silent_mode = "--silent" in sys.argv or "-s" in sys.argv
-    
     ssh_attacker = "203.0.113.200"
     web_attacker = "198.51.100.250"
     
-    if not silent_mode:
-        print("==================================================")
-        print("⚙️ Interactive Log Generation Configuration")
-        print("==================================================")
-        
-        # 1. Ask if the user wants to add their own details to the whitelist CSV
-        add_user = input("Would you like to add your own user and IP to the employee directory first? (y/N): ").strip().lower()
-        if add_user == 'y':
-            my_user = input("Enter username: ").strip()
-            my_ip = input("Enter approved IP: ").strip()
-            my_name = input("Enter your full name: ").strip()
-            my_dept = input("Enter department name: ").strip()
-            if my_user and my_ip and my_name and my_dept:
-                append_to_whitelist(my_user, my_ip, my_name, my_dept)
-            else:
-                print("[-] Error: Missing fields. Skipped adding to whitelist.")
-                
-        # 2. Ask for Attacker IP (to simulate custom source IP in logs)
-        custom_attacker = input("Enter an IP address to act as the ATTACKER in generated logs\n(or press Enter to use default test IPs 203.0.113.200 / 198.51.100.250): ").strip()
-        if custom_attacker:
-            ssh_attacker = custom_attacker
-            web_attacker = custom_attacker
-            print(f"[+] Generator will write attacks originating from: {custom_attacker}")
-            
     # Load Whitelist users and IPs to generate normal events
     system_users, normal_ips = load_employee_directory()
     
-    # Generate logs
+    # Generate logs automatically without prompt interfaces
     generate_auth_log(system_users, normal_ips, ssh_attacker)
     generate_nginx_log(normal_ips, web_attacker)
     
-    print("[*] Log generation complete.")
+    print("[+] Synthetic log generation complete (using employee directory whitelists).")

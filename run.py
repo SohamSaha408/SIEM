@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 import subprocess
+import csv
 
 BANNER = """
  ██████╗██╗███████╗███╗   ███╗
@@ -49,10 +50,42 @@ def show_whitelist():
         print("[-] Whitelist file (employee_directory.csv) not found.")
     else:
         try:
-            with open(whitelist_path, "r") as f:
+            with open(whitelist_path, "r", encoding="utf-8") as f:
                 print(f.read())
         except Exception as e:
             print(f"[-] Error reading whitelist: {e}")
+    input("\n[Press Enter to return to menu...]")
+
+def add_employee_to_whitelist():
+    """Prompts the user to add a new employee and approved IP to the whitelist CSV."""
+    clear_screen()
+    print("==================================================")
+    print("➕ ADD EMPLOYEE TO SECURITY WHITELIST")
+    print("==================================================")
+    
+    username = input("Enter system username (e.g. bob): ").strip()
+    approved_ip = input("Enter approved IP address (e.g. 192.168.1.15): ").strip()
+    employee_name = input("Enter employee full name: ").strip()
+    department = input("Enter department name: ").strip()
+    
+    if not (username and approved_ip and employee_name and department):
+        print("\n[-] Error: All fields are required. Aborting.")
+        input("\n[Press Enter to return to menu...]")
+        return
+        
+    whitelist_path = "employee_directory.csv"
+    file_exists = os.path.exists(whitelist_path)
+    
+    try:
+        with open(whitelist_path, mode='a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            if not file_exists:
+                writer.writerow(["username", "approved_ip", "employee_name", "department"])
+            writer.writerow([username, approved_ip, employee_name, department])
+        print(f"\n[+] Successfully added {employee_name} ({username} - {approved_ip}) to whitelist.")
+    except Exception as e:
+        print(f"\n[-] Error saving to whitelist: {e}")
+        
     input("\n[Press Enter to return to menu...]")
 
 def interactive_menu():
@@ -72,6 +105,7 @@ def interactive_menu():
         print("7) Run Interactive Live System Audit (Real Logs)")
         print("8) Run Complete Pipeline End-to-End")
         print("9) View Employee Whitelist (employee_directory.csv)")
+        print("10) Add Employee to Whitelist")
         print("0) Exit")
         print("==================================================")
         
@@ -90,14 +124,13 @@ def interactive_menu():
         elif choice == "6":
             run_step("export_for_tableau.py", "Exporting datasets for Tableau")
         elif choice == "7":
-            # Run live audit directly in the same terminal
             print("\n")
             subprocess.run([sys.executable, "live_audit.py"])
             input("\n[Press Enter to return to menu...]")
         elif choice == "8":
             clear_screen()
             print("[*] Running complete pipeline end-to-end...")
-            if (run_step("generate_logs.py", "Generating synthetic logs", ["--silent"]) and
+            if (run_step("generate_logs.py", "Generating synthetic logs") and
                 run_step("test_parser.py", "Running parser unit tests") and
                 run_step("parse_logs.py", "Parsing raw log files") and
                 run_step("store_logs.py", "Ingesting data into SQLite database") and
@@ -109,11 +142,13 @@ def interactive_menu():
             input("\n[Press Enter to return to menu...]")
         elif choice == "9":
             show_whitelist()
+        elif choice == "10":
+            add_employee_to_whitelist()
         elif choice == "0" or choice.lower() == "exit" or choice.lower() == "quit":
             print("\n[*] Exiting SIEM Pipeline Tool. Goodbye!")
             sys.exit(0)
         else:
-            print("[-] Invalid choice. Please enter a number between 0 and 9.")
+            print("[-] Invalid choice. Please enter a number between 0 and 10.")
             input("\n[Press Enter to continue...]")
 
 def main():
@@ -138,7 +173,6 @@ Examples:
     parser.add_argument("-a", "--all", action="store_true", help="Run the entire pipeline end-to-end")
 
     # If args are passed, run in non-interactive CLI mode
-    # If no args are passed, run in interactive SET-style menu mode
     if len(sys.argv) > 1:
         args = parser.parse_args()
         
@@ -148,7 +182,7 @@ Examples:
             
         steps = []
         if args.all or args.generate:
-            steps.append((["generate_logs.py", "--silent"], "Generating synthetic raw logs"))
+            steps.append((["generate_logs.py"], "Generating synthetic raw logs"))
         if args.all or args.test:
             steps.append((["test_parser.py"], "Running log parsing unit tests"))
         if args.all or args.parse:
