@@ -1,0 +1,23 @@
+# Raw and intermediate logs
+*.log
+cleaned_*.csv
+tableau_*.csv
+
+# SQLite Databases
+*.db
+*.sqlite
+
+# Python virtual environments & caching
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+
+# IDE and System files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
