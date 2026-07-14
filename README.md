@@ -49,8 +49,8 @@ If you have cloned this repository from GitHub, follow these steps to run the pi
 ### 1. Clone the Repository
 Clone the repository to your local computer and navigate to the directory:
 ```bash
-git clone https://github.com/SohamaSaha408/siem-log-analysis-pipeline.git
-cd siem-log-analysis-pipeline
+git clone https://github.com/SohamSaha408/SIEM.git
+cd SIEM
 ```
 
 ### 2. Set Up a Virtual Environment (Optional but Recommended)
