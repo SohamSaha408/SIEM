@@ -35,9 +35,15 @@ Examples:
     parser.add_argument("-s", "--store", action="store_true", help="Phase 3: Load cleaned logs into SQLite DB")
     parser.add_argument("-d", "--hunt", action="store_true", help="Phase 4: Run threat hunting detection queries")
     parser.add_argument("-e", "--export", action="store_true", help="Phase 5: Export CSV datasets for Tableau")
+    parser.add_argument("-l", "--live", action="store_true", help="Interactive Phase: Run live security log audit")
     parser.add_argument("-a", "--all", action="store_true", help="Run the entire pipeline end-to-end")
 
     args = parser.parse_args()
+
+    # If live mode is selected, we run it interactively and exit
+    if args.live:
+        run_step("live_audit.py", "Running live system log audit")
+        sys.exit(0)
 
     # If no flags are provided, run all phases by default
     run_all = args.all or not (args.generate or args.test or args.parse or args.store or args.hunt or args.export)
