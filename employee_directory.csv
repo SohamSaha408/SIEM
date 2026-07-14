@@ -1,0 +1,5 @@
+username,approved_ip,employee_name,department
+john,192.168.1.15,John Doe,Engineering
+alice,10.0.0.12,Alice Vance,HR
+bob,192.168.1.105,Bob Marley,IT
+devops_guy,172.16.0.5,David Miller,DevOps
